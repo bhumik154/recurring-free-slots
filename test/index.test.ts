@@ -1,0 +1,91 @@
+import { describe, expect, it } from 'vitest';
+
+import { computeFreeSlots, type RecurringBusyBlock } from '../src/index';
+
+function block(overrides: Partial<RecurringBusyBlock>): RecurringBusyBlock {
+  return {
+    daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+    start: '00:00',
+    end: '00:00',
+    ...overrides,
+  };
+}
+
+// Monday
+const MONDAY = '2026-07-20';
+// Sunday
+const SUNDAY = '2026-07-19';
+
+describe('computeFreeSlots', () => {
+  it('returns one all-day slot when there are no busy blocks', () => {
+    expect(computeFreeSlots(MONDAY, [])).toEqual([{ start: '00:00', end: '23:59' }]);
+  });
+
+  it('splits the day around a single mid-day busy block', () => {
+    const blocks = [block({ start: '09:00', end: '10:00' })];
+    expect(computeFreeSlots(MONDAY, blocks)).toEqual([
+      { start: '00:00', end: '09:00' },
+      { start: '10:00', end: '23:59' },
+    ]);
+  });
+
+  it('handles an overnight block that wraps past midnight', () => {
+    const blocks = [block({ start: '23:00', end: '07:00' })];
+    expect(computeFreeSlots(MONDAY, blocks)).toEqual([{ start: '07:00', end: '23:00' }]);
+  });
+
+  it('combines an overnight block with a mid-day block, matching a real daily schedule', () => {
+    const blocks = [
+      block({ start: '23:00', end: '07:00' }),
+      block({ start: '09:00', end: '10:00', daysOfWeek: [1, 2, 3, 4, 5] }),
+    ];
+    expect(computeFreeSlots(MONDAY, blocks)).toEqual([
+      { start: '07:00', end: '09:00' },
+      { start: '10:00', end: '23:00' },
+    ]);
+  });
+
+  it('excludes blocks not active on the given day of week', () => {
+    const blocks = [
+      block({ start: '23:00', end: '07:00' }),
+      block({ start: '09:00', end: '10:00', daysOfWeek: [1, 2, 3, 4, 5] }),
+    ];
+    expect(computeFreeSlots(SUNDAY, blocks)).toEqual([{ start: '07:00', end: '23:00' }]);
+  });
+
+  it('does not produce a zero-length slot between back-to-back blocks', () => {
+    const blocks = [
+      block({ start: '09:00', end: '10:00' }),
+      block({ start: '10:00', end: '11:00' }),
+    ];
+    expect(computeFreeSlots(MONDAY, blocks)).toEqual([
+      { start: '00:00', end: '09:00' },
+      { start: '11:00', end: '23:59' },
+    ]);
+  });
+
+  it('merges overlapping busy blocks', () => {
+    const blocks = [
+      block({ start: '09:00', end: '11:00' }),
+      block({ start: '10:00', end: '12:00' }),
+    ];
+    expect(computeFreeSlots(MONDAY, blocks)).toEqual([
+      { start: '00:00', end: '09:00' },
+      { start: '12:00', end: '23:59' },
+    ]);
+  });
+
+  it('returns no slots when busy blocks cover the entire day', () => {
+    const blocks = [
+      block({ start: '20:00', end: '06:00' }),
+      block({ start: '06:00', end: '20:00' }),
+    ];
+    expect(computeFreeSlots(MONDAY, blocks)).toEqual([]);
+  });
+
+  it('accepts a Date object as well as an ISO date string', () => {
+    const blocks = [block({ start: '09:00', end: '10:00' })];
+    const asDate = new Date(2026, 6, 20); // July 20 2026 (Monday), local time
+    expect(computeFreeSlots(asDate, blocks)).toEqual(computeFreeSlots(MONDAY, blocks));
+  });
+});
