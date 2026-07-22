@@ -88,4 +88,21 @@ describe('computeFreeSlots', () => {
     const asDate = new Date(2026, 6, 20); // July 20 2026 (Monday), local time
     expect(computeFreeSlots(asDate, blocks)).toEqual(computeFreeSlots(MONDAY, blocks));
   });
+
+  it('treats a zero-duration block (start === end) as no busy time, not as a full day', () => {
+    const blocks = [block({ start: '09:00', end: '09:00' })];
+    expect(computeFreeSlots(MONDAY, blocks)).toEqual([{ start: '00:00', end: '23:59' }]);
+  });
+
+  it('ignores a block whose daysOfWeek is empty on every day', () => {
+    const blocks = [block({ start: '09:00', end: '17:00', daysOfWeek: [] })];
+    expect(computeFreeSlots(MONDAY, blocks)).toEqual([{ start: '00:00', end: '23:59' }]);
+  });
+
+  it('reports a slot running to the end of the day as ending at 23:59, not 24:00', () => {
+    const blocks = [block({ start: '00:00', end: '22:00' })];
+    const slots = computeFreeSlots(MONDAY, blocks);
+    expect(slots).toEqual([{ start: '22:00', end: '23:59' }]);
+    expect(slots[0]!.end).not.toBe('24:00');
+  });
 });

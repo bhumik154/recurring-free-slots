@@ -1,18 +1,62 @@
 # recurring-free-slots
 
-Compute a day's **free** time slots from a list of **recurring weekly busy blocks**, correctly handling blocks that wrap past midnight (sleep, night shifts, overnight holds) and blocks that overlap or sit back-to-back.
+A pure function that computes a day's free time slots from recurring weekly busy blocks, correctly handling the case that breaks almost every hand-rolled version: a block that spans midnight.
 
-Zero dependencies. ~80 lines. Fully typed. Works in Node, the browser, or React Native.
+## The problem
 
-```bash
-npm install recurring-free-slots
+If you've ever computed availability from a list of recurring blocks (classes, shifts, sleep, meetings), you've probably hit this: a block like "Sleep, 23:00 to 07:00" doesn't fit the simple `start < end` assumption most interval code makes. The naive version looks like this:
+
+```ts
+// Naive: assumes start < end. Silently wrong for anything that wraps midnight.
+function isBusy(block, minutes) {
+  return minutes >= toMinutes(block.start) && minutes < toMinutes(block.end);
+}
 ```
 
-## Why this exists
+For a 23:00-07:00 block, `toMinutes(block.start)` is `1380` and `toMinutes(block.end)` is `420`. The condition `minutes >= 1380 && minutes < 420` is never true for any value of `minutes`, so the block silently vanishes: the "free slot" calculation reports someone as available while they're asleep. This is a correctness bug, not a style nitpick, and it only shows up for the specific blocks (overnight shifts, sleep, anything crossing midnight) that matter most to get right.
 
-Free/busy computation shows up in every scheduling tool (booking systems, shift planners, calendar apps, availability finders), and the overnight-wrap case is where most hand-rolled versions quietly break: a "Sleep 23:00-07:00" block, or a night-shift block, spans midnight and needs to occupy the *tail* of one day and the *start* of the next. Get the interval math wrong here and you either double-book someone across midnight or silently propose a slot on top of a block that's supposed to be locked.
+`computeFreeSlots` handles this by splitting a wrapping block into two intervals (the tail of the day, and the head of the next) before doing any interval math, so the midnight boundary is never a special case the caller has to remember.
 
-This library was extracted from the scheduling engine of [Koavi](https://github.com/bhumik154/koavi), an AI focus planner where "never suggest time over a locked block" is a hard product invariant, trusted to deterministic, exhaustively tested code specifically because it's too important to leave to an LLM's soft instruction-following. That same algorithm is generically useful, so it's a standalone package now.
+## Tested against exactly the cases that break naive implementations
+
+Not "should work", tested. [`test/index.test.ts`](test/index.test.ts) has 12 cases, each asserting exact input/output with no mocks:
+
+```ts
+it('handles an overnight block that wraps past midnight', () => {
+  const blocks = [block({ start: '23:00', end: '07:00' })];
+  expect(computeFreeSlots(MONDAY, blocks)).toEqual([{ start: '07:00', end: '23:00' }]);
+});
+
+it('combines an overnight block with a mid-day block, matching a real daily schedule', () => {
+  const blocks = [
+    block({ start: '23:00', end: '07:00' }),
+    block({ start: '09:00', end: '10:00', daysOfWeek: [1, 2, 3, 4, 5] }),
+  ];
+  expect(computeFreeSlots(MONDAY, blocks)).toEqual([
+    { start: '07:00', end: '09:00' },
+    { start: '10:00', end: '23:00' },
+  ]);
+});
+```
+
+The full list of scenarios covered:
+
+| Scenario | Why it's there |
+|---|---|
+| No busy blocks | Baseline: the whole day is free |
+| Single mid-day block | Baseline interval splitting |
+| Overnight block wrapping past midnight | The core bug this package exists for |
+| Overnight block combined with a mid-day block | The actual shape of a real daily schedule |
+| Block excluded on days not in `daysOfWeek` | Recurring-weekly semantics, not one-off events |
+| Back-to-back blocks (no gap between them) | Must not emit a zero-length slot |
+| Overlapping blocks | Must be merged, not double-counted |
+| Blocks covering the entire day | Must return `[]`, not a slot with `start === end` |
+| `Date` object vs. ISO string input | Both input forms must agree |
+| Zero-duration block (`start === end`) | Documented as "no busy time", not "full day": could otherwise go either way silently |
+| Empty `daysOfWeek` | Must never occupy any day |
+| A slot running to end-of-day | Must report `23:59`, never the invalid `24:00` |
+
+Read the source next to the tests: [`src/index.ts`](src/index.ts) is under 70 lines of actual logic (the rest is type declarations and doc comments), no dependencies, no framework, nothing to configure.
 
 ## Usage
 
@@ -57,18 +101,32 @@ Behavior:
 - Overlapping and back-to-back busy blocks are merged; no zero-length gaps are ever returned.
 - A block only counts on a given day if that day's number is in `daysOfWeek`.
 - An overnight block (`end <= start`) is split into two pieces internally: the portion from `start` to midnight, and the portion from midnight to `end`. This correctly blocks time on both the day it starts and the day it ends, as long as the block is scheduled on both of those days.
+- A zero-duration block (`start === end`) contributes no busy time. It is not treated as a full-day block.
 - If busy blocks cover the entire day, an empty array is returned.
+- The end of a slot that runs to midnight is reported as `23:59`, never the invalid `24:00`.
 
 ### `timeToMinutes(time: string): number` / `minutesToTime(minutes: number): string`
 
 Small exported helpers for converting between `"HH:MM"` and minutes-since-midnight, in case you need to do your own interval math alongside `computeFreeSlots`.
 
-## What this is *not*
+## Install
+
+```bash
+npm install recurring-free-slots
+```
+
+Zero dependencies. Fully typed. Works in Node, the browser, or React Native.
+
+## What this is not
 
 - Not a calendar/date library: it doesn't handle timezones, DST, or one-off (non-recurring) events. Bring your own date normalization if you need it.
 - Not a full booking engine: it only answers "what's free," not "who owns this slot" or persistence.
 
 If your problem is bigger than "given some recurring weekly blocks, what's free today," this is the wrong tool. If it's exactly that, this is a ~1KB, fully-tested drop-in.
+
+## Where this came from
+
+Extracted from the scheduling engine of [Koavi](https://github.com/bhumik154/koavi), an AI focus planner where "never suggest time over a locked block" is a hard product invariant, trusted to deterministic, exhaustively tested code specifically because it's too important to leave to an LLM's soft instruction-following.
 
 ## License
 

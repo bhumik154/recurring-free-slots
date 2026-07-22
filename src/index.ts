@@ -19,6 +19,11 @@ export function timeToMinutes(time: string): number {
   return Number(hoursPart) * 60 + Number(minutesPart ?? 0);
 }
 
+/**
+ * Minutes are clamped to "23:59" at the day boundary rather than emitted as
+ * "24:00" (not a valid HH:MM time) or wrapped to "00:00" (which would make a
+ * slot that runs to the end of the day look zero-length to a naive caller).
+ */
 export function minutesToTime(minutes: number): string {
   if (minutes >= MINUTES_PER_DAY) return '23:59';
   const hours = Math.floor(minutes / 60).toString().padStart(2, '0');
@@ -39,6 +44,11 @@ interface Interval {
 /**
  * A block spanning midnight (e.g. 23:00-07:00) occupies two ranges within a
  * single day: the tail end of the day and the start of the next.
+ *
+ * A block where start equals end (e.g. "09:00" to "09:00") is treated as
+ * zero-duration and contributes no busy time, not as a full 24-hour block.
+ * If you mean "busy all day," express it as daysOfWeek + "00:00"-"23:59"
+ * explicitly rather than relying on a start === end block.
  */
 function toIntervals(startMinutes: number, endMinutes: number): Interval[] {
   if (startMinutes === endMinutes) return [];
