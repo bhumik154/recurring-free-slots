@@ -114,7 +114,16 @@ export function computeFreeSlots(date: string | Date, busyBlocks: RecurringBusyB
     cursor = Math.max(cursor, interval.end);
   }
   if (cursor < MINUTES_PER_DAY) {
-    slots.push({ start: minutesToTime(cursor), end: minutesToTime(MINUTES_PER_DAY) });
+    // cursor === MINUTES_PER_DAY - 1 (23:59) is the one case where this
+    // check alone isn't enough: minutesToTime clamps both 1439 and 1440 to
+    // "23:59", which would otherwise produce a zero-length { "23:59",
+    // "23:59" } slot. Comparing the formatted strings (not just the
+    // minute values) catches exactly that case without a magic number.
+    const start = minutesToTime(cursor);
+    const end = minutesToTime(MINUTES_PER_DAY);
+    if (start !== end) {
+      slots.push({ start, end });
+    }
   }
   return slots;
 }

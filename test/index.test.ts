@@ -120,4 +120,17 @@ describe('computeFreeSlots', () => {
     expect(computeFreeSlots(FRIDAY, blocks)).toEqual([{ start: '00:00', end: '22:00' }]);
     expect(computeFreeSlots(SATURDAY, blocks)).toEqual([{ start: '02:00', end: '23:59' }]);
   });
+
+  it('does not produce a phantom zero-length slot when a busy block runs until 23:59', () => {
+    // cursor lands on exactly 1439 minutes here, and minutesToTime clamps
+    // both 1439 and 1440 to "23:59" - without an explicit guard this would
+    // report a { start: '23:59', end: '23:59' } slot that doesn't exist.
+    const blocks = [block({ start: '00:00', end: '23:59' })];
+    expect(computeFreeSlots(MONDAY, blocks)).toEqual([]);
+  });
+
+  it('still reports a genuine final-minute slot when busy time ends at 23:58', () => {
+    const blocks = [block({ start: '00:00', end: '23:58' })];
+    expect(computeFreeSlots(MONDAY, blocks)).toEqual([{ start: '23:58', end: '23:59' }]);
+  });
 });

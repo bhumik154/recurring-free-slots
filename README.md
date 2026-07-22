@@ -19,7 +19,7 @@ For a 23:00-07:00 block, `toMinutes(block.start)` is `1380` and `toMinutes(block
 
 ## Tested against exactly the cases that break naive implementations
 
-Not "should work", tested. [`test/index.test.ts`](test/index.test.ts) has 13 cases, each asserting exact input/output with no mocks:
+Not "should work", tested. [`test/index.test.ts`](test/index.test.ts) has 15 cases, each asserting exact input/output with no mocks:
 
 ```ts
 it('handles an overnight block that wraps past midnight', () => {
@@ -55,6 +55,8 @@ The full list of scenarios covered:
 | Zero-duration block (`start === end`) | Documented as "no busy time", not "full day": could otherwise go either way silently |
 | Empty `daysOfWeek` | Must never occupy any day |
 | A slot running to end-of-day | Must report `23:59`, never the invalid `24:00` |
+| A busy block ending exactly at `23:59` | The `23:59` clamp itself could otherwise produce a phantom `{ "23:59", "23:59" }` zero-length slot |
+| A busy block ending at `23:58` | Confirms the fix above doesn't also swallow a genuine final-minute slot |
 
 Read the source next to the tests: [`src/index.ts`](src/index.ts) is under 75 lines of actual logic (the rest is type declarations and doc comments), no dependencies, no framework, nothing to configure.
 
