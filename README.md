@@ -126,7 +126,7 @@ If your problem is bigger than "given some recurring weekly blocks, what's free 
 
 ## Where this came from
 
-I'm building Koavi, an AI focus planner where "never suggest time over a locked block" is a hard product invariant, so this piece of its scheduling engine was written as deterministic, exhaustively tested code rather than left to an LLM's soft instruction-following. The main repo is private while it's still in active development; Koavi's waitlist is at [flourished-platform-708038.framer.app](https://flourished-platform-708038.framer.app) if you want to see what it turns into.
+I'm building Koavi, an AI focus planner where "never suggest time over a locked block" is a hard product invariant, so this piece of its scheduling engine was written as deterministic, exhaustively tested code rather than left to an LLM's soft instruction-following. The main repo is private while it's still in active development; Koavi's waitlist is at [koavi.framer.website](https://koavi.framer.website) if you want to see what it turns into.
 
 ## License
 
