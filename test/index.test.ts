@@ -15,6 +15,10 @@ function block(overrides: Partial<RecurringBusyBlock>): RecurringBusyBlock {
 const MONDAY = '2026-07-20';
 // Sunday
 const SUNDAY = '2026-07-19';
+// Friday
+const FRIDAY = '2026-07-24';
+// Saturday
+const SATURDAY = '2026-07-25';
 
 describe('computeFreeSlots', () => {
   it('returns one all-day slot when there are no busy blocks', () => {
@@ -104,5 +108,16 @@ describe('computeFreeSlots', () => {
     const slots = computeFreeSlots(MONDAY, blocks);
     expect(slots).toEqual([{ start: '22:00', end: '23:59' }]);
     expect(slots[0]!.end).not.toBe('24:00');
+  });
+
+  it('assigns a wrapping block scheduled on a single day to the correct two calendar days (the bartender shift)', () => {
+    // A shift from 22:00 to 02:00, scheduled Fridays only. The 22:00-24:00
+    // portion belongs to Friday; the 00:00-02:00 portion belongs to
+    // Saturday, not Friday. A block scheduled on every day would hide this
+    // distinction, so this test deliberately uses a single day.
+    const blocks = [block({ start: '22:00', end: '02:00', daysOfWeek: [5] })];
+
+    expect(computeFreeSlots(FRIDAY, blocks)).toEqual([{ start: '00:00', end: '22:00' }]);
+    expect(computeFreeSlots(SATURDAY, blocks)).toEqual([{ start: '02:00', end: '23:59' }]);
   });
 });

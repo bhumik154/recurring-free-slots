@@ -15,11 +15,11 @@ function isBusy(block, minutes) {
 
 For a 23:00-07:00 block, `toMinutes(block.start)` is `1380` and `toMinutes(block.end)` is `420`. The condition `minutes >= 1380 && minutes < 420` is never true for any value of `minutes`, so the block silently vanishes: the "free slot" calculation reports someone as available while they're asleep. This is a correctness bug, not a style nitpick, and it only shows up for the specific blocks (overnight shifts, sleep, anything crossing midnight) that matter most to get right.
 
-`computeFreeSlots` handles this by splitting a wrapping block into two intervals (the tail of the day, and the head of the next) before doing any interval math, so the midnight boundary is never a special case the caller has to remember.
+`computeFreeSlots` fixes this by treating a wrapping block as two pieces that belong to two different calendar days: the portion before midnight counts toward the day the block is scheduled on, and the portion after midnight counts toward the next day. That distinction only matters once a wrapping block isn't scheduled every day: a shift from 22:00 to 02:00 on Fridays only has to block Friday night and Saturday morning, not Friday morning, or you'll block off a slot that was never actually busy.
 
 ## Tested against exactly the cases that break naive implementations
 
-Not "should work", tested. [`test/index.test.ts`](test/index.test.ts) has 12 cases, each asserting exact input/output with no mocks:
+Not "should work", tested. [`test/index.test.ts`](test/index.test.ts) has 13 cases, each asserting exact input/output with no mocks:
 
 ```ts
 it('handles an overnight block that wraps past midnight', () => {
@@ -27,15 +27,14 @@ it('handles an overnight block that wraps past midnight', () => {
   expect(computeFreeSlots(MONDAY, blocks)).toEqual([{ start: '07:00', end: '23:00' }]);
 });
 
-it('combines an overnight block with a mid-day block, matching a real daily schedule', () => {
-  const blocks = [
-    block({ start: '23:00', end: '07:00' }),
-    block({ start: '09:00', end: '10:00', daysOfWeek: [1, 2, 3, 4, 5] }),
-  ];
-  expect(computeFreeSlots(MONDAY, blocks)).toEqual([
-    { start: '07:00', end: '09:00' },
-    { start: '10:00', end: '23:00' },
-  ]);
+it('assigns a wrapping block scheduled on a single day to the correct two calendar days (the bartender shift)', () => {
+  // A shift from 22:00 to 02:00, scheduled Fridays only. The 22:00-24:00
+  // portion belongs to Friday; the 00:00-02:00 portion belongs to
+  // Saturday, not Friday.
+  const blocks = [block({ start: '22:00', end: '02:00', daysOfWeek: [5] })];
+
+  expect(computeFreeSlots(FRIDAY, blocks)).toEqual([{ start: '00:00', end: '22:00' }]);
+  expect(computeFreeSlots(SATURDAY, blocks)).toEqual([{ start: '02:00', end: '23:59' }]);
 });
 ```
 
@@ -47,6 +46,7 @@ The full list of scenarios covered:
 | Single mid-day block | Baseline interval splitting |
 | Overnight block wrapping past midnight | The core bug this package exists for |
 | Overnight block combined with a mid-day block | The actual shape of a real daily schedule |
+| Wrapping block scheduled on a single day, not every day | Proves the pre/post-midnight halves land on the correct calendar day, not both on the same day |
 | Block excluded on days not in `daysOfWeek` | Recurring-weekly semantics, not one-off events |
 | Back-to-back blocks (no gap between them) | Must not emit a zero-length slot |
 | Overlapping blocks | Must be merged, not double-counted |
@@ -56,7 +56,7 @@ The full list of scenarios covered:
 | Empty `daysOfWeek` | Must never occupy any day |
 | A slot running to end-of-day | Must report `23:59`, never the invalid `24:00` |
 
-Read the source next to the tests: [`src/index.ts`](src/index.ts) is under 70 lines of actual logic (the rest is type declarations and doc comments), no dependencies, no framework, nothing to configure.
+Read the source next to the tests: [`src/index.ts`](src/index.ts) is under 75 lines of actual logic (the rest is type declarations and doc comments), no dependencies, no framework, nothing to configure.
 
 ## Usage
 
@@ -100,7 +100,7 @@ interface Slot {
 Behavior:
 - Overlapping and back-to-back busy blocks are merged; no zero-length gaps are ever returned.
 - A block only counts on a given day if that day's number is in `daysOfWeek`.
-- An overnight block (`end <= start`) is split into two pieces internally: the portion from `start` to midnight, and the portion from midnight to `end`. This correctly blocks time on both the day it starts and the day it ends, as long as the block is scheduled on both of those days.
+- An overnight block (`end <= start`) is split into two pieces: the portion from `start` to midnight counts toward the day the block is scheduled on (per `daysOfWeek`), and the portion from midnight to `end` counts toward the following calendar day automatically, whether or not that following day is separately listed in `daysOfWeek`.
 - A zero-duration block (`start === end`) contributes no busy time. It is not treated as a full-day block.
 - If busy blocks cover the entire day, an empty array is returned.
 - The end of a slot that runs to midnight is reported as `23:59`, never the invalid `24:00`.
