@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { computeFreeSlots, type RecurringBusyBlock } from '../src/index';
 
@@ -132,5 +132,48 @@ describe('computeFreeSlots', () => {
   it('still reports a genuine final-minute slot when busy time ends at 23:58', () => {
     const blocks = [block({ start: '00:00', end: '23:58' })];
     expect(computeFreeSlots(MONDAY, blocks)).toEqual([{ start: '23:58', end: '23:59' }]);
+  });
+
+  describe('date string input is timezone-independent', () => {
+    const originalTZ = process.env.TZ;
+
+    afterEach(() => {
+      process.env.TZ = originalTZ;
+    });
+
+    it('resolves the same day of week for an ISO date string regardless of the runtime timezone', () => {
+      const mondayOnly = [block({ start: '09:00', end: '10:00', daysOfWeek: [1] })];
+      const expected = [
+        { start: '00:00', end: '09:00' },
+        { start: '10:00', end: '23:59' },
+      ];
+
+      for (const tz of ['America/Chicago', 'UTC', 'Asia/Kolkata', 'Pacific/Kiritimati']) {
+        process.env.TZ = tz;
+        expect(computeFreeSlots(MONDAY, mondayOnly)).toEqual(expected);
+      }
+    });
+
+    it('does not fix a caller-constructed Date built without a time component (a caller mistake, not something this function can detect)', () => {
+      // new Date('2026-07-20') has no time component, so per the Date Time
+      // String Format spec it's parsed as UTC midnight, not local midnight.
+      // West of UTC that resolves to the previous day locally - this is the
+      // construction this function's docs warn callers away from.
+      process.env.TZ = 'America/Chicago';
+      const mondayOnly = [block({ start: '09:00', end: '10:00', daysOfWeek: [1] })];
+
+      const constructedUnsafely = new Date('2026-07-20');
+      const constructedSafely = new Date(2026, 6, 20);
+
+      expect(constructedUnsafely.getDay()).toBe(0); // Sunday: the caller's mistake
+      expect(constructedSafely.getDay()).toBe(1); // Monday: correct
+
+      // Passing the string directly matches the correctly-constructed Date...
+      expect(computeFreeSlots(MONDAY, mondayOnly)).toEqual(computeFreeSlots(constructedSafely, mondayOnly));
+      // ...but the unsafely-constructed Date silently computes Sunday's
+      // availability instead of Monday's: the Monday-only block never
+      // applies, so the day reads as entirely free.
+      expect(computeFreeSlots(constructedUnsafely, mondayOnly)).toEqual([{ start: '00:00', end: '23:59' }]);
+    });
   });
 });

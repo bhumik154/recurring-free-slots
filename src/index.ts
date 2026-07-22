@@ -36,9 +36,33 @@ export function minutesToTime(minutes: number): string {
   return `${hours}:${mins}`;
 }
 
+/**
+ * For a string, parses year/month/day directly and builds the Date with the
+ * local-time multi-arg constructor, rather than `new Date(dateString)` -
+ * whose UTC-vs-local interpretation depends on a real but easy-to-miss
+ * distinction in the Date Time String Format spec: "2026-07-20" (no time
+ * component) parses as UTC midnight, while "2026-07-20T00:00:00" parses as
+ * local midnight. Parsing the parts manually sidesteps that distinction
+ * entirely instead of depending on the caller (or a future edit to this
+ * file) getting it right.
+ *
+ * A `Date` passed in directly is used as-is via `.getDay()`, which is
+ * correct for whatever instant that Date represents - but this function has
+ * no way to know how the Date was constructed. Building one yourself with
+ * `new Date('2026-07-20')` (no time component) anchors it to UTC midnight,
+ * which silently resolves to the previous day locally in any timezone west
+ * of UTC (e.g. it's Sunday 19:00 in Chicago when it's already Monday UTC).
+ * That's a caller-side construction mistake this function cannot detect or
+ * correct from a bare Date object - pass the ISO string instead if you're
+ * not constructing the Date yourself with explicit year/month/day.
+ */
 function resolveDayOfWeek(date: string | Date): number {
-  const d = typeof date === 'string' ? new Date(`${date}T00:00:00`) : date;
-  return d.getDay();
+  if (date instanceof Date) return date.getDay();
+  const parts = date.split('-');
+  const year = Number(parts[0]);
+  const month = Number(parts[1] ?? 1);
+  const day = Number(parts[2] ?? 1);
+  return new Date(year, month - 1, day).getDay();
 }
 
 interface Interval {

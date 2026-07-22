@@ -19,7 +19,7 @@ For a 23:00-07:00 block, `toMinutes(block.start)` is `1380` and `toMinutes(block
 
 ## Tested against exactly the cases that break naive implementations
 
-Not "should work", tested. [`test/index.test.ts`](test/index.test.ts) has 15 cases, each asserting exact input/output with no mocks:
+Not "should work", tested. [`test/index.test.ts`](test/index.test.ts) has 17 cases, each asserting exact input/output with no mocks:
 
 ```ts
 it('handles an overnight block that wraps past midnight', () => {
@@ -57,6 +57,8 @@ The full list of scenarios covered:
 | A slot running to end-of-day | Must report `23:59`, never the invalid `24:00` |
 | A busy block ending exactly at `23:59` | The `23:59` clamp itself could otherwise produce a phantom `{ "23:59", "23:59" }` zero-length slot |
 | A busy block ending at `23:58` | Confirms the fix above doesn't also swallow a genuine final-minute slot |
+| Same ISO date string, four different runtime timezones | An ISO string must resolve to the same day of week everywhere, not drift with the server's location |
+| A caller-constructed `Date` built without a time component | Documents (doesn't "fix," it can't be fixed from a bare `Date`) that this is a real `Date`-constructor footgun west of UTC |
 
 Read the source next to the tests: [`src/index.ts`](src/index.ts) is under 75 lines of actual logic (the rest is type declarations and doc comments), no dependencies, no framework, nothing to configure.
 
@@ -81,6 +83,8 @@ computeFreeSlots('2026-07-19', busyBlocks); // Sunday, no work block
 ```
 
 `date` accepts either an ISO `"YYYY-MM-DD"` string or a `Date` object; the day of week is derived from it. `daysOfWeek` uses `0` (Sunday) through `6` (Saturday), matching `Date.prototype.getDay()`.
+
+**Passing the string is the safer choice.** It's parsed as year/month/day directly and resolved in the local timezone regardless of what timezone the code is running in. If you construct your own `Date` instead, build it with `new Date(year, monthIndex, day)`; avoid `new Date('2026-07-20')` (no time component), which JavaScript parses as UTC midnight and can silently resolve to the previous day in any timezone west of UTC. That's a footgun in the `Date` constructor itself, not something this function can detect or correct once it receives a bare `Date`.
 
 ## API
 
